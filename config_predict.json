@@ -1,0 +1,11 @@
+{
+    "model": "/content/drive/MyDrive/Data/set2-pdf-bis/model7",
+    "file_data" : "/content/drive/MyDrive/Data/set2-pdf/datas/968-2024-00046116_img20240330_11251323.pdf ",
+    "code_product" : "",
+    "max_seq_length": 8192,
+    "dtype": "torch.float16",
+    "load_in_4bit": true,
+    "path_save": "",
+    "eps_energy" : 0.05,
+    "eps_ciqual": 0.5
+}
