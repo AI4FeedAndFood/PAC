@@ -8,35 +8,45 @@ import os
 import pandas as pd 
 from read_config import read_config_predict
 ### AZURE OCR ###
-import pdf2image 
+from pdf2image import convert_from_path
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 from azure.core.credentials import AzureKeyCredential
 from typing import Dict
 from typing import Any 
-import argparse
-
+import io 
 from constant import KEY_SECRET, ENDPOINT_SECRET
 #TODO keep these informations secret 
 
-def convert_pdf_as_image(pdf_path, output_folder = "/content/") -> list[bytes]:
+def pil_to_array(pil_image):
+    """convert a PIL image object to a byte array
+
+    Arguments:
+        pil_image {PIL} -- Pillow image object
+
+    Returns:
+        {bytes} -- PIL image object in a form of byte array
+    """
+    image_byte_array = io.BytesIO()
+    pil_image.save(image_byte_array, format='PNG')
+    image_data = image_byte_array.getvalue()
+    return image_data
+
+def convert_pdf_as_image(pdf_path) -> list[bytes]:
     """
     This function converts a PDF file into images and deletes the temporarily created image files.
 
     Args:
         pdf_path (str): The path to the PDF file to be converted to images.
-        output_folder (str, optional): The path to the folder where the temporary image files will be saved. Defaults to "/content/".
 
     Returns:
         images_data (list[bytes]): A list of image data in bytes, where each element represents an image from each pages of a PDF file.
 
     Note:
         The function uses the pdf2image library to convert the PDF to images.
-        The temporarily created image files are deleted after they have been read into memory.
-        If no images are generated from the PDF, a message is printed indicating that no images were generated.
 
     Example:
-        images_data = convert_pdf_as_image("sample.pdf", "/content/output_folder")
+        images_data = convert_pdf_as_image("sample.pdf")
         print(images_data)  # Prints the list of image data
     """
     
@@ -46,21 +56,16 @@ def convert_pdf_as_image(pdf_path, output_folder = "/content/") -> list[bytes]:
     elif os.path.splitext(pdf_path)[1].lower() != '.pdf':
         raise ValueError("File must be a PDF.")
     else:
-        images_path = pdf2image.convert_from_path(pdf_path, output_folder=output_folder, fmt='jpeg', paths_only=True)
-        images_data = []
-        for image_path in images_path:
-            with open(image_path, "rb") as f:
-                image_data= f.read()
-                images_data.append(image_data)
-                if os.path.isfile(image_path):
-                    os.remove(image_path)
-                    #print(f"Le fichier '{image_path}' a été supprimé avec succès.")
-                else:
-                    print(f"Le fichier '{image_path}' n'existe pas.")
-        else:
-            print("Aucune image n'a été générée à partir du PDF.")
 
-        return images_data
+        images = convert_from_path(pdf_path)#, output_folder=output_folder, fmt='jpeg', paths_only=True)
+        image_bytes = []
+        for image in images:
+            byte_array = pil_to_array(image)
+            image_bytes.append(byte_array)
+
+
+        return image_bytes
+
 
 def call_azure_ocr(image_data, log = False, name_image = "")-> Dict[str, Dict[str, Any]]:
     """
