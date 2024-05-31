@@ -39,22 +39,28 @@ def convert_pdf_as_image(pdf_path, output_folder = "/content/") -> list[bytes]:
         images_data = convert_pdf_as_image("sample.pdf", "/content/output_folder")
         print(images_data)  # Prints the list of image data
     """
-    images_path = pdf2image.convert_from_path(pdf_path, output_folder=output_folder, fmt='jpeg', paths_only=True)
-    images_data = []
-    if images_path:
-      for image_path in images_path:
-        with open(image_path, "rb") as f:
-            image_data= f.read()
-            images_data.append(image_data)
-            if os.path.isfile(image_path):
-                os.remove(image_path)
-                #print(f"Le fichier '{image_path}' a été supprimé avec succès.")
-            else:
-                print(f"Le fichier '{image_path}' n'existe pas.")
+    
+    if not os.path.isfile(pdf_path):
+        print(f"PDF file '{pdf_path}' doesn't exist.")
+        raise FileNotFoundError
+    elif os.path.splitext(pdf_path)[1].lower() != '.pdf':
+        raise ValueError("File must be a PDF.")
     else:
-        print("Aucune image n'a été générée à partir du PDF.")
+        images_path = pdf2image.convert_from_path(pdf_path, output_folder=output_folder, fmt='jpeg', paths_only=True)
+        images_data = []
+        for image_path in images_path:
+            with open(image_path, "rb") as f:
+                image_data= f.read()
+                images_data.append(image_data)
+                if os.path.isfile(image_path):
+                    os.remove(image_path)
+                    #print(f"Le fichier '{image_path}' a été supprimé avec succès.")
+                else:
+                    print(f"Le fichier '{image_path}' n'existe pas.")
+        else:
+            print("Aucune image n'a été générée à partir du PDF.")
 
-    return images_data
+        return images_data
 
 def call_azure_ocr(image_data, log = False, name_image = "")-> Dict[str, Dict[str, Any]]:
     """
@@ -247,10 +253,8 @@ def from_path_to_text_OCRAzure(path:str) -> str:
         text = from_path_to_text_OCRAzure(path)
         print(text)  # Prints the extracted text from the PDF file
     """
-    if os.path.splitext(path)[1].lower() == '.pdf':
-        images_data = convert_pdf_as_image(path)
-    else:
-        raise ValueError("File must be a PDF.")
+    
+    images_data = convert_pdf_as_image(path)
 
     txt = ""
     for image_data in images_data:
