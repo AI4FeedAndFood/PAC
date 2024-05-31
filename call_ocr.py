@@ -6,7 +6,6 @@
 #!pip install paddlepaddle
 import os 
 import pandas as pd 
-import json
 from read_config import read_config_predict
 ### AZURE OCR ###
 import pdf2image 
@@ -15,6 +14,7 @@ from azure.ai.vision.imageanalysis.models import VisualFeatures
 from azure.core.credentials import AzureKeyCredential
 from typing import Dict
 from typing import Any 
+import argparse
 
 from constant import KEY_SECRET, ENDPOINT_SECRET
 #TODO keep these informations secret 
@@ -408,7 +408,17 @@ def add_text_PaddleOCR_to_dataset(dataset : pd.DataFrame):
         
         dataset["Paddle_text"] = ocr_txts
 
+
 if __name__ == "__main__":
-    df = pd.read_csv("/content/drive/MyDrive/Data/set1-pdf/data1-1.csv",index_col=False)
-    add_text_OCRAzure_to_dataset(df)
-    df.to_csv("/content/drive/MyDrive/Data/set1-pdf/data1-1.csv",index=False)
+    # df = pd.read_csv("/content/drive/MyDrive/Data/set1-pdf/data1-1.csv",index_col=False)
+    # add_text_OCRAzure_to_dataset(df)
+    # df.to_csv("/content/drive/MyDrive/Data/set1-pdf/data1-1.csv",index=False)
+    parser = argparse.ArgumentParser(description="OCR call")
+
+    parser.add_argument("path_pdf", type=str, help="Le chemin d'accès au fichier PDF d'entrée")
+
+    args = parser.parse_args()
+
+    text = from_path_to_text_OCRAzure(args.path_pdf)
+
+    print(text)
