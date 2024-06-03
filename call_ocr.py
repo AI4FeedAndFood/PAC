@@ -6,7 +6,6 @@
 #!pip install paddlepaddle
 import os 
 import pandas as pd 
-import json
 from read_config import read_config_predict
 import argparse
 ### AZURE OCR ###
@@ -414,6 +413,7 @@ def add_text_PaddleOCR_to_dataset(dataset : pd.DataFrame):
             ocr_txts.append(from_path_to_text_PaddleOCR(path, ocr))
         
         dataset["Paddle_text"] = ocr_txts
+
 
 if __name__ == "__main__":
     # df = pd.read_csv("/content/drive/MyDrive/Data/set1-pdf/data1-1.csv",index_col=False)
