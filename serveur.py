@@ -1,4 +1,4 @@
-from predict_estimates import generate, from_config_load_model
+from predict_estimates import generate, from_config_load_model, split_into_list
 from unsloth import FastLanguageModel
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -23,7 +23,8 @@ async def generate_text(request: TextGenerationRequest):
 
     try:
         pred = generate(INSTRUCTION, request.text_ocr, model, tokenizer, echo=False)
-        return TextGenerationResponse(prediction=pred)
+        list_pred = split_into_list(pred)
+        return TextGenerationResponse(prediction=list_pred)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -33,7 +34,6 @@ def load_model_and_tokenizer(config_path):
 
 if __name__ == "__main__":
     
-    # Remplacez les valeurs par défaut par les vôtres
     parser = argparse.ArgumentParser(description="Lunch server")
     parser.add_argument("path_config", type=str, help="Path for config_predict.json, ex: 'what/is/the/directory/config_predict.json'")
     args = parser.parse_args()

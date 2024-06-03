@@ -8,6 +8,7 @@ import os
 import pandas as pd 
 import json
 from read_config import read_config_predict
+import argparse
 ### AZURE OCR ###
 from pdf2image import convert_from_path
 from azure.ai.vision.imageanalysis import ImageAnalysisClient

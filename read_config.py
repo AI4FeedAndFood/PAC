@@ -46,7 +46,7 @@ def read_config_predict(path_config):
 
         if not isinstance(eps_ciqual, float):
             raise ValueError("The 'eps_ciqual' in the config file must be a float.")
-
+        print(config)
         return config
     except Exception as e:
         print(f"Error in load_config: {e}")

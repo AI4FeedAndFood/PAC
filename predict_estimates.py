@@ -7,6 +7,17 @@ import call_ocr as co
 from controle import check_from_config, create_result_table
 from constant import COLUMNS, INSTRUCTION
 
+def split_into_list(pred, len_target = -1):
+    list_pred = pred.split(',')
+    if len_target == -1:
+        len_target = len(COLUMNS)
+
+    if  len_target > len(list_pred):
+        list_pred.extend(['' for _ in range(len - len(list_pred))])
+
+    return list_pred[0: len_target]
+    
+
 def generate(system_prompt, prompt, model, tokenizer, echo = True):
     try:
         inputs = tokenizer(
@@ -14,8 +25,6 @@ def generate(system_prompt, prompt, model, tokenizer, echo = True):
             f"<|start_header_id|>system<|end_header_id|>{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>{prompt}<|end_header_id|>"
         ], return_tensors = "pt").to("cuda")
 
-        n = len(inputs["input_ids"])
-        print(f"Len inputs = {n}")
         outputs = model.generate(**inputs, max_new_tokens = 256, use_cache = True, pad_token_id=tokenizer.eos_token_id)
         text_output = tokenizer.batch_decode(outputs, skip_special_tokens = True)
         if echo:
@@ -58,7 +67,7 @@ def predict_estimates(path_config):
     llm_time = time.time()
     print(f"Inference in {llm_time - load_llm_time}")
 
-    list_pred = pred.split(",")
+    list_pred = split_into_list(pred)
     print(list_pred)
     k = 0
     while  k <len(list_pred) or k < len(COLUMNS):

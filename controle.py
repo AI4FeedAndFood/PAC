@@ -9,7 +9,7 @@ def extract_from_ciqual(df, alim_code, nut_name):
         raise TypeError("alim_code must be a string")
     if not isinstance(nut_name, str):
         raise TypeError("nut_name must be a string")
-    if alim_code not in df['alim_code']:
+    if alim_code not in df['alim_code'].to_list():
         raise TypeError("alim_code not in the Ciqual table")
     if nut_name not in df.columns:
         raise TypeError("nut_name not in the Ciqual columns, maibe updtate converter from constant or check Ciqual Table")
