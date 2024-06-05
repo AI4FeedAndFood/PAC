@@ -50,7 +50,7 @@ def convert_pdf_as_image(pdf_path) -> list[bytes]:
         images_data = convert_pdf_as_image("sample.pdf")
         print(images_data)  # Prints the list of image data
     """
-    
+    pdf_path = pdf_path.strip()
     if not os.path.isfile(pdf_path):
         print(f"PDF file '{pdf_path}' doesn't exist.")
         raise FileNotFoundError

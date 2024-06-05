@@ -2,7 +2,7 @@ import time
 from read_config import read_config_predict
 from unsloth import FastLanguageModel
 import argparse
-
+import torch #for eval(config.get("dtype")) !
 import call_ocr as co
 from controle import check_from_config, create_result_table
 from constant import COLUMNS, INSTRUCTION
@@ -13,7 +13,7 @@ def split_into_list(pred, len_target = -1):
         len_target = len(COLUMNS)
 
     if  len_target > len(list_pred):
-        list_pred.extend(['' for _ in range(len - len(list_pred))])
+        list_pred.extend(['' for _ in range(len_target - len(list_pred))])
 
     return list_pred[0: len_target]
     

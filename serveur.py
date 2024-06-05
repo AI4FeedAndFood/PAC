@@ -13,7 +13,7 @@ class TextGenerationRequest(BaseModel):
     text_ocr: str
 
 class TextGenerationResponse(BaseModel):
-    prediction: str
+    prediction: list
 
 @app.post("/generate_text/", response_model=TextGenerationResponse)
 async def generate_text(request: TextGenerationRequest):
