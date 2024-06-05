@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from dataset_creation import create_dataset_llama3  # Assurez-vous d'importer correctement votre fonction
+#from dataset_creation import create_dataset_llama3  # Assurez-vous d'importer correctement votre fonction
 
 class App:
     def __init__(self, root):
@@ -65,13 +65,11 @@ class App:
             messagebox.showinfo("Fichier chargé", f"Fichier CSV chargé : {self.input_csv}")
 
     def load_output_dataset(self):
-        self.output_dataset = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv")],
-            title="Choisir le fichier de sortie du dataset"
+        self.output_dataset = filedialog.askdirectory(
+            title="Choisir le dossier de sortie du dataset"
         )
         if self.output_dataset:
-            messagebox.showinfo("Fichier sélectionné", f"Fichier de sortie : {self.output_dataset}")
+            messagebox.showinfo("Dossier sélectionné", f"Dossier de sortie : {self.output_dataset}")
 
     def run_create_dataset(self):
         if not self.input_csv or not self.output_dataset:
@@ -85,15 +83,16 @@ class App:
             push_to_hub = self.push_to_hub_var.get()
             tokens_for_transformer = self.tokens_entry.get()
 
-            create_dataset_llama3(
-                self.input_csv,
-                self.output_dataset,
-                id_starting_estimate_column,
-                length_nutrition_table,
-                save_to_disk,
-                push_to_hub,
-                tokens_for_transformer
-            )
+            # create_dataset_llama3(
+            #     self.input_csv,
+            #     self.output_dataset,
+            #     id_starting_estimate_column,
+            #     length_nutrition_table,
+            #     save_to_disk,
+            #     push_to_hub,
+            #     tokens_for_transformer
+            # )
+            print(id_starting_estimate_column)
             messagebox.showinfo("Succès", "Dataset créé avec succès.")
         except Exception as e:
             messagebox.showerror("Erreur", f"Une erreur s'est produite : {e}")
