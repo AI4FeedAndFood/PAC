@@ -312,13 +312,18 @@ def add_text_OCRAzure_to_dataset(dataset : pd.DataFrame):
         add_text_OCRAzure_to_dataset(dataset)
         print(dataset)  # Prints the DataFrame with the new 'Azure_text' column
     """
+    n = len(dataset)
     if not "path" in dataset.columns: 
         raise KeyError("'path' not a column in the dataset, cannot find the pdf/image paths to process OCR")
     else: 
         ocr_txts = []
         paths = dataset['path']
         raiseError = False
+        
+        k = 0 
+        
         for path in paths:
+            
             if not check_file_exists(path):
                 print(f"Warning {path} doesn't exist")
                 raiseError = True 
@@ -326,6 +331,8 @@ def add_text_OCRAzure_to_dataset(dataset : pd.DataFrame):
             raise FileExistsError("Some file(s) don't exist.")
         for path in paths:
             ocr_txts.append(from_path_to_text_OCRAzure(path))
+            k +=1 
+            print(f"{k}/{n}")
         
         dataset["Azure_text"] = ocr_txts
 

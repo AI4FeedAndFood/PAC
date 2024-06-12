@@ -12,10 +12,13 @@
         "load_in_4bit": true
     },
     "datasets" : {
+        "dataset_train_on_disk" : false,
         "dataset_train_name" : "Baprick/llama3_ocr_value_0.2.2",
+        "split_train" : "train",
+        "dataset_test_on_disk" : true,
         "dataset_test_name" : "/content/drive/MyDrive/Data/set-2-pdf-quatro/dataset llama",
         "input_field": "prompt",
-        "split" : "train"
+        "split_test" : "test"
     },
     "lora_config": {
       "r": 8,

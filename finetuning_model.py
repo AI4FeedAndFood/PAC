@@ -7,7 +7,7 @@ import json
 import pandas as pd
 from datasets import Dataset, DatasetDict
 from unsloth import is_bfloat16_supported
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from huggingface_hub import notebook_login
 from transformers import TrainingArguments
 from trl import SFTTrainer
@@ -135,6 +135,16 @@ def test_model(model,tokenizer, dataset_test):
     dic_accuracy['value_accuracy_tot'] = value_accuracy_tot
     return dic_accuracy
 
+def load_dataset_for_finetuning(dataset_name, split, on_disk):    
+    if on_disk:
+        dataset = load_from_disk(dataset_name)[split]
+    else:
+        dataset = load_dataset(dataset_name)[split]
+        
+    print()
+    print(f"Dataset is loaded from {dataset_name}")
+    return dataset
+
 
 def finetuning(path_config):
     
@@ -154,15 +164,10 @@ def finetuning(path_config):
         print()
         print(f"Warning: you will not save or push your model. CRTL + Z to abort ?")
 
-    dataset_train_name = config.get("datasets").get("dataset_train_name")
-    dataset_train = load_dataset(dataset_train_name)[config.get("datasets").get("split")]
-    print()
-    print(f"Dataset_train is loaded from {dataset_train_name}")
+    dataset_train = load_dataset_for_finetuning(config.get("datasets").get("dataset_train_name"), config.get("datasets").get("split_train"), config.get("datasets").get("dataset_train_on_disk"))
     
-    dataset_test_name = config.get("datasets").get("dataset_test_name")
-    dataset_test = load_dataset(dataset_test_name)[config.get("datasets").get("split")]
-    print(f"Dataset_test is loaded from {dataset_test_name}")
-
+    dataset_test = load_dataset_for_finetuning(config.get("datasets").get("dataset_test_name"), config.get("datasets").get("split_test"), config.get("datasets").get("dataset_test_on_disk"))
+    
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name = config.get("model_config").get("base_model"),
         max_seq_length = config.get("model_config").get("max_seq_length"),
