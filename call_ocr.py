@@ -1,93 +1,56 @@
-#dépendance !pip install pdf2image !sudo apt-get install -y poppler-utils
-# !pip install azure-ai-vision-imageanalysis
-# PIL
-#pandas
-#!pip install paddleocr
-#!pip install paddlepaddle
+# Dependencies and imports
 import os 
 import pandas as pd 
 from read_config import read_config_predict
 import argparse
-### AZURE OCR ###
-from pdf2image import convert_from_path
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 from azure.core.credentials import AzureKeyCredential
-from typing import Dict
-from typing import Any 
+from typing import Dict, Any 
 import io 
-from constant import KEY_SECRET, ENDPOINT_SECRET
-#TODO keep these informations secret 
+import multiprocessing
+from constant import KEY_SECRET, ENDPOINT_SECRET, MIN_LEN_TEXT_OCR_FOR_CROP
+from crop_with_yolo import crop_with_yolo
+from PIL import Image
+import concurrent.futures
+from functools import partial
+from load_img_pdf import load_image, is_image_too_large, load_image_resized, convert_with_pdf2image
 
 def pil_to_array(pil_image):
-    """convert a PIL image object to a byte array
+    """Convert a PIL image object to a byte array.
 
-    Arguments:
-        pil_image {PIL} -- Pillow image object
+    Args:
+        pil_image (PIL.Image): Pillow image object.
 
     Returns:
-        {bytes} -- PIL image object in a form of byte array
+        bytes: PIL image object in the form of a byte array.
     """
     image_byte_array = io.BytesIO()
     pil_image.save(image_byte_array, format='PNG')
     image_data = image_byte_array.getvalue()
     return image_data
 
-def convert_pdf_as_image(pdf_path) -> list[bytes]:
+
+    
+def call_azure_ocr(image_data, log=False, name_image="") -> Dict[str, Dict[str, Any]]:
     """
-    This function converts a PDF file into images and deletes the temporarily created image files.
+    Call Azure's OCR API to extract text from an image.
 
     Args:
-        pdf_path (str): The path to the PDF file to be converted to images.
-
-    Returns:
-        images_data (list[bytes]): A list of image data in bytes, where each element represents an image from each pages of a PDF file.
-
-    Note:
-        The function uses the pdf2image library to convert the PDF to images.
-
-    Example:
-        images_data = convert_pdf_as_image("sample.pdf")
-        print(images_data)  # Prints the list of image data
-    """
-    pdf_path = pdf_path.strip()
-    if not os.path.isfile(pdf_path):
-        print(f"PDF file '{pdf_path}' doesn't exist.")
-        raise FileNotFoundError
-    elif os.path.splitext(pdf_path)[1].lower() != '.pdf':
-        raise ValueError("File must be a PDF.")
-    else:
-
-        images = convert_from_path(pdf_path)#, output_folder=output_folder, fmt='jpeg', paths_only=True)
-        image_bytes = []
-        for image in images:
-            byte_array = pil_to_array(image)
-            image_bytes.append(byte_array)
-
-
-        return image_bytes
-
-
-def call_azure_ocr(image_data, log = False, name_image = "")-> Dict[str, Dict[str, Any]]:
-    """
-    This function calls Azure's OCR API to extract text from an image.
-
-    Args:
-        image_data (bytes): The image data in bytes.
+        image_data (Image.Image): The image data as a PIL Image object.
         log (bool, optional): A flag indicating whether to print the OCR results to the console. Defaults to False.
         name_image (str, optional): The name of the image being analyzed. Defaults to "".
 
     Returns:
-        ImageAnalysis (Dict[str, Dict[str: Any]]): The result of the OCR analysis, which includes the extracted text and metadata.
+        Dict[str, Dict[str, Any]]: The result of the OCR analysis, which includes the extracted text and metadata.
 
-    Note:
-        The function uses the Azure Image Analysis client to call the OCR API.
-        The Azure endpoint and key are read from environment variables.
-        If the environment variables are not set, an error message is printed and the function exits.
+    Raises:
+        KeyError: If the required environment variables are not set.
 
     Example:
-        imageAnalysis = call_azure_ocr(image_data, log=True)
-        print(imageAnalysis)  # Prints the OCR analysis result
+        image = Image.open("sample.jpg")
+        result = call_azure_ocr(image, log=True, name_image="sample_image")
+        print(result)  # Prints the OCR analysis result
     """
     try:
         endpoint = ENDPOINT_SECRET
@@ -98,23 +61,21 @@ def call_azure_ocr(image_data, log = False, name_image = "")-> Dict[str, Dict[st
         exit()
 
     # Create an Image Analysis client
+    image_bytes = pil_to_array(image_data) 
     client = ImageAnalysisClient(
         endpoint=endpoint,
         credential=AzureKeyCredential(key)
     )
 
-
-    # Get a caption for the image. This will be a synchronously (blocking) call.
+    # Perform OCR analysis
     imageAnalysis = client.analyze(
-        image_data=image_data,
+        image_data=image_bytes,
         visual_features=[VisualFeatures.CAPTION, VisualFeatures.READ],
     )
 
-    print(f"OCR Call is complished for: {name_image}")
-    # Print caption results to the console
+    print(f"OCR Call is accomplished for: {name_image}")
     if log:
-      show_result_OCRAzure(imageAnalysis)
-
+        show_result_OCRAzure(imageAnalysis)    
     return imageAnalysis
   
 def show_result_OCRAzure(imageAnalysis):
@@ -226,64 +187,198 @@ def list_str_to_str(list_str):
         str: A single string formed by concatenating the elements of `list_str` with a comma and a space separating each element.
 
     Example:
-        list_str = ['Hello', 'world', '!']
+        list_str = [['Hello', 'world', '!']]
         result = list_str_to_str(list_str)
         print(result)  # Prints 'Hello , world , !'
     """
     strings = ""
-    for string in list_str:
-        strings +=  str(string) + " , "
-    return strings
+    for list_ in list_str:
+        for string in list_:
+            strings +=  str(string) + " , "
+        return strings
 
 
-def from_path_to_text_OCRAzure(path:str) -> str:
+
+
+
+def from_path_to_text_OCRAzure(path: str, model_yolo_path=None, bool_is_crop=False) -> str:
     """
-    This function extracts text from a PDF file using Azure OCR API.
+    Extract text from a PDF or image file using Azure OCR API.
 
     Args:
-        path (str): The path to the PDF file.
+        path (str): The path to the PDF or image file.
+        model_yolo_path (str, optional): Path to the YOLO model for image cropping. Defaults to None.
+        bool_is_crop (bool, optional): Whether to return crop information. Defaults to False.
 
     Returns:
-        str: The extracted text from the PDF file.
-        
-    Raises:
-        ValueError: If the file is not a PDF.
+        str: The extracted text from the file.
+        tuple: A tuple containing the extracted text and a boolean indicating if the image was cropped (if bool_is_crop is True).
 
-    Note:
-        The function first converts the PDF file into a list of images using the `convert_pdf_as_image` function.
-        Then, it calls the `call_azure_ocr` function for each image to extract text using Azure OCR API.
-        Finally, it concatenates the extracted text from all images into a single string using the `list_str_to_str` function.
+    Raises:
+        ValueError: If the file is neither a PDF nor a supported image format.
 
     Example:
-        path = 'sample.pdf'
-        text = from_path_to_text_OCRAzure(path)
+        text = from_path_to_text_OCRAzure("sample.pdf")
         print(text)  # Prints the extracted text from the PDF file
     """
+    # Load and preprocess the image(s)
+    if model_yolo_path is not None:
+        #If a yolo model is parsed, use it to crop the image
+        images_data_crop, images_data_not_crop = crop_with_yolo(path, model_yolo_path)
+        if len(images_data_crop) > 0:
+            #if it detected a table 
+            is_crop = True
+            images_data = images_data_crop
+        else:
+            images_data = images_data_not_crop
+            is_crop = False
+    else:
+        images_data = load_image(path)
+        is_crop = False
     
-    images_data = convert_pdf_as_image(path)
+    # Process images in parallel
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_to_image = {executor.submit(process_single_image, image_data, path): image_data for image_data in images_data}
+        results = []
+        for future in concurrent.futures.as_completed(future_to_image):
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as exc:
+                print(f'Generated an exception: {exc}')
 
-    txt = ""
-    for image_data in images_data:
-        result = call_azure_ocr(image_data, name_image=path)
-        block_text = list_of_lines_from_OCRAzure(result)
-        for text in block_text:
-            txt += list_str_to_str(text)
+
+    text_ocr = ""
+    for result in results: #result can be a string or None (don't use .join() method)
+        if result != None:
+            text_ocr += result 
+    # Handle cases where YOLO cropping doesn't produce enough text
+    if is_crop and len(text_ocr) < MIN_LEN_TEXT_OCR_FOR_CROP:
+        print(f"Warning: YOLO detected an image and cropped it, but OCR didn't extract enough characters. Retrying with the full scan.")
+        images_data = images_data_not_crop 
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_to_image = {executor.submit(process_single_image, image_data, path): image_data for image_data in images_data}
+            results = []
+            for future in concurrent.futures.as_completed(future_to_image):
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as exc:
+                    print(f'Generated an exception: {exc}')
+        is_crop = False 
+        text_ocr = ""
+        for result in results:
+            if result != None:
+                text_ocr += result 
+               
+    if bool_is_crop:
+        return text_ocr, is_crop
+    else: 
+        return text_ocr
+
+
+def from_config_to_text(path_config):
+    """
+    Extract text from a PDF or image file using, all information have to be in the config file.
+    Config file must be in the format: 
+    {
+        "model_yolo": "/content/best_mono_class.pt",
+        "file_data" : "/content/968-2024-00046116_img20240330_11251323.pdf",
+    }
+    Args:
+        path_config (str): The path to the config file.
+
+    Returns:
+        str: The extracted text from the file.
+    """    
+    config = read_config_predict(path_config)
+    file_data = config.get("file_data")
+    model_yolo_path = config.get("model_yolo")
+    return from_path_to_text_OCRAzure(file_data, model_yolo_path)
+
+#### THREADS 
+import concurrent.futures
+from functools import partial
+
+def process_single_image(image_data, path=None):
+    """
+    Process a single image with Azure OCR.
+
+    Args:
+        image_data (bytes): The image data as bytes.
+        path (str, optional): The path of the image file. Defaults to None.
+
+    Returns:
+        str: The extracted text from the image.
+
+    Raises:
+        ValueError: If the image is too large and cannot be resized.
+
+    Example:
+        with open("image.jpg", "rb") as f:
+            image_data = f.read()
+        text = process_single_image(image_data, "image.jpg")
+        print(text)  # Prints the extracted text from the image
+    """
+    if is_image_too_large(image_data):
+        print(f"Image is too large")
+        resized_image = load_image_resized(image_data)
+        if is_image_too_large(resized_image):
+            raise ValueError("Unable to resize image to acceptable size")
+        image_data = resized_image
+
+    result = call_azure_ocr(image_data)
+    block_text = list_of_lines_from_OCRAzure(result)
+    return list_str_to_str(block_text)
+
+def from_images_to_text(images_data, max_workers=5):
+    """
+    Convert a list of images to text using Azure OCR in parallel.
+
+    Args:
+        images_data (list[Image.Image]): A list of PIL Image objects to be processed.
+        max_workers (int, optional): The maximum number of worker threads to use. Defaults to 5.
+
+    Returns:
+        str: The concatenated text extracted from all images.
+
+    Raises:
+        Exception: If an error occurs during the OCR process for an image.
+
+    Example:
+        images = [Image.open("image1.jpg"), Image.open("image2.jpg")]
+        text = from_images_to_text(images)
+        print(text)  # Prints the extracted text from all images
+    """
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        process_image = partial(process_single_image)
+        future_to_image = {executor.submit(process_image, image_data): image_data for image_data in images_data}
+        
+        txt = ""
+        for future in concurrent.futures.as_completed(future_to_image):
+            try:
+                txt += future.result()
+            except Exception as exc:
+                print(f'An image generated an exception: {exc}')
 
     return txt
 
-def from_config_to_text(path_config):
-    config = read_config_predict(path_config)
-    file_data = config.get("file_data")
-    text_ocr = from_path_to_text_OCRAzure(file_data)
-    return text_ocr
-
 def check_file_exists(file_path: str) -> bool:
     """
+    Check if a file exists at the given path.
+
     Args:
-        file_path (str): Le chemin d'accès au fichier à vérifier.
+        file_path (str): The path to the file to check.
 
     Returns:
-        bool: True si le fichier existe, False sinon.
+        bool: True if the file exists, False otherwise.
+
+    Example:
+        if check_file_exists("sample.pdf"):
+            print("The file exists")
+        else:
+            print("The file does not exist")
     """
     return os.path.isfile(file_path)
 
@@ -296,7 +391,7 @@ def add_text_OCRAzure_to_dataset(dataset : pd.DataFrame):
         dataset (pd.DataFrame): The pandas DataFrame to which the new column will be added.
 
     Returns:
-        None
+        This function adds a new column named 'Azure_text' to the DataFrame.
 
     Raises:
         KeyError: If the 'path' column is not present in the DataFrame.
@@ -335,103 +430,24 @@ def add_text_OCRAzure_to_dataset(dataset : pd.DataFrame):
             print(f"{k}/{n}")
         
         dataset["Azure_text"] = ocr_txts
+ 
+ 
+ #### Testing       
+import unittest
+from azure.ai.vision.imageanalysis.models import ImageAnalysisResult
 
-
-### PADDLE OCR ###
-from paddleocr import PaddleOCR
-import fitz
-from PIL import Image
-import numpy as np 
-
-def PDF_to_images(path):
-    """
-    Open the pdf and return all pages as a list of array
-    Args:
-        path (path): python readable path
-
-    Returns:
-        list of arrays: all pages as array
-    """
-    images = fitz.open(path)
-    res = []
-    for image in images:
-        pix = image.get_pixmap(dpi=300)
-        mode = "RGBA" if pix.alpha else "RGB"
-        img = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
-        img = np.array(img)
-        res.append(img)
-    return res   
-
-def from_path_to_text_PaddleOCR(path:str, ocr : PaddleOCR) -> str:
-    """
-    Extract text from a PDF file using PaddleOCR.
-
-    Args:
-        path (str): The path to the PDF file.
-        ocr (PaddleOCR): The PaddleOCR object to use for OCR.
-
-    Returns:
-        str: The extracted text from the PDF file.
-
-    Raises:
-        ValueError: If the file is not a PDF.
-    """
-    if os.path.splitext(path)[1].lower() == '.pdf':
-        images = PDF_to_images(path)
-        images = images[0:]
-        txts = ""
-        for im in images:
-            results = ocr.ocr(im, cls=True) 
-            for result in results :
-                if result != None:
-                    for line in result:
-                            txts +=  " " + line[1][0]
-                else:
-                    print(f"Warning: PaddleOCR from {path} results to a partial/global None result, result: {txts}")
-        return txts 
-    else:
-        raise ValueError("File must be a PDF.")
-
-def add_text_PaddleOCR_to_dataset(dataset : pd.DataFrame):
-    """
-    Add a new column to a Pandas DataFrame containing the text extracted from PDF files using PaddleOCR.
-
-    Args:
-        dataset (pd.DataFrame): The Pandas DataFrame to which the new column will be added.
-
-    Raises:
-        KeyError: If the 'path' column is not present in the DataFrame.
-        FileExistsError: If some file(s) specified in the 'path' column do not exist.
-    """
-    if not "path" in dataset.columns: 
-        raise KeyError("'path' not a column in the dataset, cannot find the pdf/image paths to process OCR")
-    else: 
-        ocr = PaddleOCR(use_angle_cls=True, lang='french')
-        ocr_txts = []
-        paths = dataset['path']
-        raiseError = False
-        for path in paths:
-            if not check_file_exists(path):
-                print(f"Warning {path} doesn't exist")
-                raiseError = True 
-        if raiseError:
-            raise FileExistsError("Some file(s) don't exist.")
-        for path in paths:
-            ocr_txts.append(from_path_to_text_PaddleOCR(path, ocr))
+class TestOCRFunctions(unittest.TestCase):
+    def test_pil_to_array(self):
+        image = Image.new('RGB', (100, 100), color='red')
+        array = pil_to_array(image)
+        self.assertIsInstance(array, bytes)
         
-        dataset["Paddle_text"] = ocr_txts
+    def test_call_azure_ocr(self):
+        # This test requires Azure credentials to be set up
+        image = Image.new('RGB', (100, 100), color='white')
+        result = call_azure_ocr(image, log=False, name_image="test_image")
+        self.assertIsInstance(result, ImageAnalysisResult)
 
 
 if __name__ == "__main__":
-    # df = pd.read_csv("/content/drive/MyDrive/Data/set1-pdf/data1-1.csv",index_col=False)
-    # add_text_OCRAzure_to_dataset(df)
-    # df.to_csv("/content/drive/MyDrive/Data/set1-pdf/data1-1.csv",index=False)
-    parser = argparse.ArgumentParser(description="OCR call")
-
-    parser.add_argument("path_pdf", type=str, help="Le chemin d'accès au fichier PDF d'entrée")
-
-    args = parser.parse_args()
-
-    text = from_path_to_text_OCRAzure(args.path_pdf)
-
-    print(text)
+    unittest.main()
