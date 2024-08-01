@@ -5,8 +5,8 @@ INSTRUCTION = "Tu es une IA qui doit convertir un texte obtenu via un OCR, en un
 
 OCR_COLUMN = "Azure_text"
 #Path for Ciqual and Eurofins table 
-PATH_CIQUAL_TABLE = "/content/drive/MyDrive/Data/Ciqual/Table Ciqual 2020_FR_2020 07 07.xls"
-PATH_EUROFINS_TABLE = "/content/drive/MyDrive/Data/EurofinsTableAverageParameterValue(ETAPV)/etapv.xlsx"
+PATH_CIQUAL_TABLE = "/content/drive/MyDrive/Baptiste/Data/Ciqual/Table Ciqual 2020_FR_2020 07 07.xls"
+PATH_EUROFINS_TABLE = "/content/drive/MyDrive/Baptiste/Data/EurofinsTableAverageParameterValue(ETAPV)/etapv.xlsx"
 #Conveter for Ciqual (or Eurofins) column names to our column names
 COLUMN_CONVERTER_CIQUAL = {
     'Energie(kJ)': 'Energie, Règlement UE N° 1169/2011 (kJ/100 g)',
@@ -76,10 +76,10 @@ COLUMNS_FOR_TOTAL_WEIGHT = "Mat grasse(g),Glucide(g),Fibre(g),Proteine(g),Sel(g)
 
 #Information needed to use Azure OCR API 
 
-ENDPOINT_SECRET =  'https://ocr-eurofins.cognitiveservices.azure.com/'
-#ENDPOINT_SECRET = 'https://ocr-eurofins-fbge.cognitiveservices.azure.com/'
-KEY_SECRET = '91869b0a47a343468df828355b39ab2f'
-#KEY_SECRET = '043b5707d6f74cd1b4d3b621a582020d'
+#ENDPOINT_SECRET =  'https://ocr-eurofins.cognitiveservices.azure.com/'
+ENDPOINT_SECRET = 'https://ocr-eurofins-fbge.cognitiveservices.azure.com/'
+#KEY_SECRET = '91869b0a47a343468df828355b39ab2f'
+KEY_SECRET = '043b5707d6f74cd1b4d3b621a582020d'
 
 #Which data format can be load 
 IMG_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']

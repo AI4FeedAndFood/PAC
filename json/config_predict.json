@@ -1,7 +1,7 @@
 {
     "model": "/content/drive/MyDrive/model_estimates/model13",
-    "model_yolo": "/content/drive/MyDrive/model_TD/best_mono_class.pt",
-    "file_data" : "/content/drive/MyDrive/Data/set2-pdf/datas/968-2024-00046116_img20240330_11251323.pdf",
+    "model_yolo": "/content/drive/MyDrive/Baptiste/model_TD/best_mono_class.pt",
+    "file_data" : "/content/drive/MyDrive/Baptiste/Data/set2-pdf/datas/968-2024-00046116_img20240330_11251323.pdf",
     "code_product_eurofins" : false,
     "code_product_ciqual" : 19023,
     "max_seq_length": 8192,

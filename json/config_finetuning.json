@@ -1,9 +1,8 @@
 {
     "model_config": {
-        "_base_model": "unsloth/llama-3-8b-Instruct-bnb-4bit",
-        "base_model": "/content/drive/MyDrive/Data/set2-pdf-bis/model7", 
+        "base_model": "/content/drive/MyDrive/Baptiste/model_estimates/model13", 
         "new_model" : false, 
-        "save_model_path": "/content/drive/MyDrive/Data/models_baptiste/model_test",
+        "save_model_path": "/content/",
         "save_on_dick" : true,
         "push_on_hub": false,
         "finetuned_model":"Baprick/llama3_ocr_value_0.2.2", 
@@ -12,11 +11,11 @@
         "load_in_4bit": true
     },
     "datasets" : {
-        "dataset_train_on_disk" : false,
-        "dataset_train_name" : "Baprick/llama3_ocr_value_0.2.2",
+        "dataset_train_on_disk" : true,
+        "dataset_train_name" : "/content/drive/MyDrive/Baptiste/Data/metaset1.1",
         "split_train" : "train",
         "dataset_test_on_disk" : true,
-        "dataset_test_name" : "/content/drive/MyDrive/Data/set-2-pdf-quatro/dataset llama",
+        "dataset_test_name" : "/content/drive/MyDrive/Baptiste/Data/metaset1.1",
         "input_field": "prompt",
         "split_test" : "test"
     },
@@ -37,7 +36,7 @@
         "gradient_accumulation_steps": 4, 
         "warmup_steps": 5,
         "max_steps":0, 
-        "num_train_epochs": 3,
+        "num_train_epochs": 1,
         "learning_rate": 2e-4, 
         "logging_steps": 1, 
         "optim" :"adamw_8bit", 
