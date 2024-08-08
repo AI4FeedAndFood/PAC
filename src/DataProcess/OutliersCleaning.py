@@ -5,7 +5,7 @@ from sklearn.preprocessing import Normalizer
 from sklearn.pipeline import make_pipeline
 from annoy import AnnoyIndex
 
-from MatrixTreesProcess import compute_matrices_distance
+from MatrixTree.MatrixTreesProcess import compute_matrices_distance
 
 # Fonction pour trouver des paires similaires avec Annoy
 def find_similar_pairs(annoy_index, vectors, df, threshold=0.8, top_k=10):

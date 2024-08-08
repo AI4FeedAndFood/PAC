@@ -8,7 +8,7 @@
         
         "REQUIERD_COL_DF" :  ["AccountCode", "Description", "ProductCode", "SampleCode"],
 
-        "REQUIERD_COL_TREE" :  ["ProductCode"],
+        "REQUIERD_COL_TREE" :  ["ProductCode", "Nom"],
 
         "FEATURES_COL"  : ["AccountCode", "CleanDescription", "Laboratory"],
 
@@ -16,7 +16,7 @@
 
         "COL_ORDER" : ["SampleCode", "AccountCode", "Description", "CleanDescription", "ProductName", "ProductCode"],
 
-        "IM_COL" : ["SampleCode"],
+        "UNICITY_COL" : ["SampleCode"],
 
         "MATRICES_TREE_PATH" : "Config\\matrices_tree.xlsx",
         

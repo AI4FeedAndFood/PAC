@@ -1,13 +1,8 @@
 import pandas as pd
 import json
 import os
-import random
 
-from copy import deepcopy
-from itertools import combinations, product
-from sklearn.model_selection import train_test_split
-
-from RawDataPreprocess import clean_description, set_config
+from DataProcess.RawDataPreprocess import set_config
 
 config_path = r"Config\DataConfig.json"
 DATA_CONFIG = set_config(config_path, version="VERSION_NG_FR")
@@ -87,7 +82,7 @@ class MatrixTree:
             leaves.extend(self.get_leaves(child))
         return leaves
 
-def compute_matrices_distance(n1, n2, df):
+def compute_matrices_distance(n1, n2, matrices_df):
   """Compute the distance beetween two nodes from the matrix tree using a dataframe that summarized all branches of the tree.
   This distance is named Lowest Common Ancestor
 
@@ -100,7 +95,7 @@ def compute_matrices_distance(n1, n2, df):
       Distance (int): The distance between n1 and n2
   """
   try:
-    parents1, parents2 = list(df[df["ProductCode"] == n1]["Matrix Ancestries"])[0].split("."), list(df[df["ProductCode"] == n2]["Matrix Ancestries"])[0].split(".")
+    parents1, parents2 = list(matrices_df[matrices_df["ProductCode"] == n1]["Matrix Ancestries"])[0].split("."), list(matrices_df[matrices_df["ProductCode"] == n2]["Matrix Ancestries"])[0].split(".")
     parents1, parents2 = sorted([parents1,parents2], key=lambda x: len(x))
 
     for i, ancestre_i in enumerate(parents1[::-1]):

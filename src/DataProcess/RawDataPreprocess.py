@@ -1,4 +1,3 @@
-
 """
 
 This script aim to process a raw EXCEL FILE to get an available dataframe to put in the model.
@@ -21,14 +20,20 @@ Useful columns for interpretation or comprehension:
 - ClientType : Interco or client, could help for undertanding or debugging
 
 """
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from ModelTools.Models import CustomBertEncoder
+
+from transformers import AutoTokenizer
 
 import json
 import pandas as pd
-import os
 import re
+import torch
 
-from datetime import date
-import numpy as np
+from tqdm import tqdm
 
 from copy import deepcopy
 from unidecode import unidecode
@@ -37,7 +42,11 @@ from num2words import num2words
 
 MAX_EXCEL_ROW = 1048574
 
-def get_all_tables(path, ext_list=[".csv", ".xlsx"]):
+bert_model_name = 'sentence-transformers/all-distilroberta-v1'
+TOKENIZER = AutoTokenizer.from_pretrained(bert_model_name, )
+TEXT_ENCODER = CustomBertEncoder(bert_model_name, n_attention_layers=4)
+
+def load_data(path, ext_list=[".csv", ".xlsx"]):
     """Extract all excel from a folder
 
     Args:
@@ -86,7 +95,7 @@ def load_df_from_excel(table_path, REQUIERD_COL):
     
     # Check the format
     if not set(REQUIERD_COL).issubset(df.columns):
-        print(f"A needed column is not found on the given file: {basename}")
+        print(f"A needed column is not found on the given file: {basename}\n- {df.columns}")
         return KeyError
 
     # Del miss imported columns (named "Unnamed_N") 
@@ -94,7 +103,7 @@ def load_df_from_excel(table_path, REQUIERD_COL):
 
     return df, basename
 
-def clean_productCode(df, MATRICES_TREE):
+def clean_target_column(df, matrix_tree_df, TARGER_COL):
     """Delete rows with a non-conforme productCode according to the MATRICES tree given in the CONFIG json
 
     Args:
@@ -105,11 +114,28 @@ def clean_productCode(df, MATRICES_TREE):
         df (pandas.DataFrame): The loaded DataFrame cleaned
     """
     
+    df.dropna(axis=0, subset=TARGER_COL)
+    # Apply the mapping to convert the product codes
+    code_mapping = {code.split(".")[-1]: code for code in matrix_tree_df[TARGER_COL[0]] if code}
+    product_code_unit = list(code_mapping.keys())
+    df[TARGER_COL[0]] = df[TARGER_COL[0]].apply(lambda x: code_mapping.get(x, x) if x in product_code_unit else "unknown")
     # Delete rows with non-conform productCode
-    valid_productCode = MATRICES_TREE["ProductCode"].to_list()
-    df = df[df['ProductCode'].isin(valid_productCode)]
-
+    df = df[df[TARGER_COL[0]].str.contains(".")]
+    
     return df
+
+def clean_rows(merged_df, UNICITY_COL, FEATURES_COL):
+    
+    # Del NA on the needed columns
+    merged_df.dropna(axis=0, subset=FEATURES_COL+UNICITY_COL)
+
+    # Del similar SampleCode 
+    merged_df.drop_duplicates(subset=UNICITY_COL)
+
+    # Del similar Features tuples 
+    merged_df.drop_duplicates(subset=FEATURES_COL)
+
+    return merged_df
 
 def _cleaning_func(sentence, lang_short, lemmatizer, stopwords, DEL_LIST, CONVERT_DICT):
          
@@ -117,10 +143,9 @@ def _cleaning_func(sentence, lang_short, lemmatizer, stopwords, DEL_LIST, CONVER
         sentence = unidecode(sentence)
         # Delete special character
         sentence = re.sub(r'[^a-z0-9àéâîïèœê%\s]', ' ', sentence)
-
         # Split the descriptions into single words and delete repeted words
         words = []
-        [words.append(word) for word in str(sentence).split() if not word in words]
+        words = [word for word in str(sentence).split() if not word in words]
         
         res_words = []
 
@@ -167,7 +192,7 @@ def _cleaning_func(sentence, lang_short, lemmatizer, stopwords, DEL_LIST, CONVER
         
         return cleaned_sentence
 
-def clean_description(df, LANG, DEL_LIST, CONVERT_DICT):
+def clean_description(df, LANG, DEL_LIST=[], CONVERT_DICT={}):
     """ Clean the description columns following rules (delete specific character, lemmatize, change usefull nulber to words...)
 
     Args:
@@ -200,25 +225,71 @@ def clean_description(df, LANG, DEL_LIST, CONVERT_DICT):
         
         return lemmatizer, stopwords
     
-    
     # Load sentence lemma and stop words from NLP spacy model
     lemmatizer, stopwords = _load_lemmatizer(LANG)
 
     # Delete rows without description
-    cleanDescription = df["Description"].apply(lambda x: _cleaning_func(x, LANG["short"], lemmatizer, stopwords, DEL_LIST, CONVERT_DICT))
-    df["CleanDescription"] = deepcopy(cleanDescription)
-    
+    df = df.assign(CleanDescription=df["Description"].apply(
+        lambda x: _cleaning_func(x, LANG["short"], lemmatizer, stopwords, DEL_LIST, CONVERT_DICT)
+    ))
     df = df[df['CleanDescription'] != '']
 
     return df
 
-def merge_dataframes(df_list):
-    """Merged dataframes
+def encode_description(df, tokenizer, text_encoder, device, batch_size=32):
+    """
+    Tokenize and encode the 'CleanDescription' column of a DataFrame using BERT.
+
+    Args:
+        df (pd.DataFrame): Input DataFrame containing 'CleanDescription' column.
+        tokenizer: BERT tokenizer.
+        text_encoder: BERT encoder model.
+        device (str): Device to use for encoding ('cuda' or 'cpu').
+        batch_size (int): Number of samples to process in each batch.
 
     Returns:
-        df (pandas.DataFrame): The merged DataFrame
+        pd.DataFrame: DataFrame with added 'TokenizedCleanDescription' and 'EncodedCleanDescription' columns.
     """
-    return pd.concat([df for df in df_list])
+    all_tokenized = []
+    all_encoded = []
+    
+    # Convert the column to a list for batch processing
+    texts = df['CleanDescription'].tolist()
+    
+    # Process in batches
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i+batch_size]
+        
+        # Tokenize the batch
+        tokenized_batch = tokenizer(batch_texts,
+                                    add_special_tokens=True,
+                                    max_length=256,
+                                    return_token_type_ids=True,
+                                    padding='max_length',
+                                    truncation=True,
+                                    return_attention_mask=True,
+                                    return_tensors='pt')
+        
+        # Store tokenized results
+        all_tokenized.extend([dict(zip(tokenized_batch.keys(), [t[i] for t in tokenized_batch.values()]))
+                              for i in range(len(batch_texts))])
+        
+        # Encode the batch if CUDA is available
+        if torch.cuda.is_available() and "cuda" in device:
+            tokenized_batch = {k: v.to(device) for k, v in tokenized_batch.items()}
+            with torch.no_grad():
+                encoded_batch = text_encoder(**tokenized_batch)
+            encoded_batch = encoded_batch.last_hidden_state[:, 0, :].cpu().numpy()
+            all_encoded.extend(encoded_batch)
+        
+    # Add columns to the DataFrame
+    df["TokenizedCleanDescription"] = all_tokenized
+    if torch.cuda.is_available() and "cuda" in device:
+        df["EncodedCleanDescription"] = all_encoded
+    else:
+        df["EncodedCleanDescription"] = None
+    
+    return df
 
 def arrange_cols(df, COL_ORDER):
     """Arrange columns according to the specified order
@@ -242,94 +313,69 @@ def arrange_cols(df, COL_ORDER):
 
     return df
 
-def clean_rows(merged_df, FEATURES_COL, TARGET_COL):
+def process_and_encode_dataframe(df, DATA_CONFIG, laboratory="", save_folder=""):
+    """
+    Prépare un DataFrame pour l'utilisation dans un modèle en appliquant plusieurs étapes de nettoyage et de transformation.
+
+    Args:
+        df (pd.DataFrame): DataFrame d'entrée contenant les données brutes.
+        laboratory (str): Nom du laboratoire traitant les données.
+        config_path (str): Chemin vers le fichier de configuration JSON.
+        save_folder (str, optional): Dossier où sauvegarder le DataFrame traité. Par défaut "".
+
+    Returns:
+        pd.DataFrame: DataFrame nettoyé et préparé pour le modèle.
+    """
+    # Extraction de la configuration
+
+    # Nettoyage des lignes inutilisables
+    MATRIX_TREE_DF, _ = load_df_from_excel(DATA_CONFIG["MATRICES_TREE_PATH"], DATA_CONFIG["REQUIERD_COL_TREE"])
+    df = clean_target_column(df, MATRIX_TREE_DF, DATA_CONFIG["TARGET_COL"])
+    df = clean_rows(df, DATA_CONFIG["REQUIERD_COL_DF"], DATA_CONFIG["UNICITY_COL"])
+
+    # Traitement de la description
+    df = clean_description(df, DATA_CONFIG["LANG"], DATA_CONFIG["DEL_LIST"], DATA_CONFIG["CONVERT_DICT"])
     
-    # Del NA on the needed columns
-    merged_df.dropna(axis=0, subset=FEATURES_COL)
+    # Ajout de colonnes importantes : Laboratory, TokenizedCleanDescription et EncodedCleanDescription
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if laboratory:
+        df["Laboratory"] = laboratory
 
-    # Del similar SampleCode 
-    merged_df.drop_duplicates(subset=FEATURES_COL)
+    df = encode_description(df, TOKENIZER, TEXT_ENCODER, device, batch_size=32)
 
-    # Del similar SampleCode 
-    merged_df.drop_duplicates(subset=TARGET_COL)
+    # Réorganisation des colonnes
+    df = arrange_cols(df, DATA_CONFIG["COL_ORDER"])
 
-    return merged_df
-
-def save_df(df, save_folder):
-    """Save DataFrame at the save_path place.
-
-    Args:
-        df (pandas.DataFrame): a DataFrame
-        save_folder (str folder path): the path
-    """
-
-    name = "Merged_and_cleand_df_" + str(date.today())
-    for i in range(0, len(df),MAX_EXCEL_ROW):
-        df.iloc[i:i+MAX_EXCEL_ROW-1,:].to_excel(os.path.join(save_folder, name+f"_{i}.xlsx"), index=False)
-
-def process_multi_path(folder_path, config_path, save_folder=""):
-    """Load, process and save excels into one unique DataFrame
-
-    Args:
-        args_path : Path .xlsx to all df to process
-
-    """
-    # Extract config
-    DATA_CONFIG = set_config(config_path, version="VERSION_NG_FR")
-
-    # Load de matrices tree
-    MATRICES_TREE, _ = load_df_from_excel(DATA_CONFIG["MATRICES_TREE_PATH"], DATA_CONFIG["REQUIERD_COL_TREE"])
-
-    table_pathes = getAllTables(folder_path)
-    print(f"Excel collected: {len(table_pathes)}")
-
-    df_list = []
-
-    # Cleaning pipeline
-    for enum, table_path in enumerate(table_pathes):
-
-        print(f"Process {enum}/{len(table_pathes)}")
-        # If "Merged" is in the path it means that the current excel has already been process
-        if "Merged" in table_path:
-            print(f"{table_path} is not process")
-            df, basename = load_df_from_excel(table_path, DATA_CONFIG["REQUIERD_COL_DF"])
-            df_list.append(df)
-        
-        else:
-            # Other tables are process
-            df, basename = load_df_from_excel(table_path, DATA_CONFIG["REQUIERD_COL_DF"]) 
-            df = clean_productCode(df, MATRICES_TREE)
-            df = clean_description(df, DATA_CONFIG["LANG"], DATA_CONFIG["DEL_LIST"], DATA_CONFIG["CONVERT_DICT"])
-            df["Laboratory"] = basename.split("_")[0]
-            df_list.append(df)
-
-    # Merged clean dfs
-    merged_df = merge_dataframes(df_list)
-    print("All df are merged")
-
-    # Arrange columns and rows
-    merged_df = arrange_cols(merged_df, DATA_CONFIG["COL_ORDER"])
-    # Arrange columns and rows
-    merged_df = clean_rows(merged_df, DATA_CONFIG["REQUIERD_COL_DF"], DATA_CONFIG["TARGET_COL"])
-    print("All df are cleand")
-
-    # Save the final df
-    if save_folder:
-        print(f"Saving the final df of size {len(merged_df)}")
-        save_df(merged_df, save_folder)
-
-    return merged_df
+    return df
 
 if __name__ == "__main__":
 
-    print("-- START : samples extraction clean and merge --")
+    df = pd.read_excel(r"C:\Users\CF6P\Desktop\PAC\Data_PAC\0_raw_extraction\EUBSCO_NG_Samples_2023.xlsx")
+    DATA_CONFIG = {
 
-    version = "VERSION_NG_FR"
+        "LANG" : {
+            "short" : "fr",
+            "full" : "french"
+        },
+        
+        "REQUIERD_COL_DF" :  ["AccountCode", "Description", "ProductCode", "SampleCode"],
 
-    config_path = r"Config\DataConfig.json"
+        "REQUIERD_COL_TREE" :  ["ProductCode", "Nom"],
 
-    folder_path = r"C:\Users\CF6P\Desktop\PAC\Data_PAC\to_process_and_merge"
-    process_multi_path(folder_path, config_path, save_folder=r"C:\Users\CF6P\Desktop\PAC\Data_PAC")
+        "FEATURES_COL"  : ["AccountCode", "CleanDescription", "Laboratory"],
 
-    print("-- DONE --")
+        "TARGET_COL" : ["ProductCode"],
 
+        "COL_ORDER" : ["SampleCode", "AccountCode", "Description", "CleanDescription", "ProductName", "ProductCode"],
+
+        "UNICITY_COL" : ["SampleCode"],
+
+        "MATRICES_TREE_PATH" : "Config\\matrices_tree.xlsx",
+        
+        "DEL_LIST" : [],
+
+        "CONVERT_DICT" : {}
+    }
+
+    df =  process_and_encode_dataframe(df, DATA_CONFIG, laboratory="")
+    
